@@ -99,7 +99,7 @@ def compute_loss(
         
     L_zernike = torch.stack(zernike_terms).mean()
     L_ipt_sh = F.mse_loss(c_vae_out, c_ipt_sh)
-    L_kl = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp()).sum(dim=-1).mean()
+    L_kl = -0.5 * (1 + logvar_raw - mu_scalars.pow(2) - logvar_raw.exp()).sum(dim=-1).mean()
     total = L_zernike + lambda_ipt * L_ipt_sh + beta * L_kl
 
     return dict(

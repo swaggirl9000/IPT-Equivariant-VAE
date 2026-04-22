@@ -1,0 +1,17 @@
+name: ipt-vae-env
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - pytorch-cuda=11.8 
+  - numpy
+  - matplotlib
+  - pip
+  - pip:
+      - e3nn
+      - pylebedev

@@ -151,4 +151,4 @@ class EquivariantVAE(nn.Module):
         r_flat = self.recon_out(r)                    
         c_vae_out = self._e3nn_to_c(r_flat)     
 
-        return v_raw, c_vae_out, mu, logvar_expanded
+        return v_raw, c_vae_out, mu, logvar, logvar_expanded

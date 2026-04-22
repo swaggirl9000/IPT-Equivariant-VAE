@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader
 from get_directions import get_directions
 from get_mnist import PointCloudMNIST
 from pipeline import IPTVAEPipeline, compute_loss
+import itertools
 
 
 def train(config: dict):
@@ -83,31 +84,35 @@ def train(config: dict):
         current_lr = optimizer.param_groups[0]['lr']
         print(f"    Current Learning Rate: {current_lr}\n")
 
-
 if __name__ == "__main__":
-    config = dict(
-        lebedev_order  = 50,     
-        l_max          = 6,
-        R              = 8,
-        learning_rate  = 1e-3,
-        num_epochs     = 50,
-        batch_size     = 32,
-        beta           = 0.1,
-        lambda_ipt     = 1.0,
-        dataset_kwargs = dict(root="./data", train=True, num_points=256),
-    )
-    train(config)
-# if __name__ == "__main__":
-#     config = dict(
-#         num_directions = 50,      
-#         l_max          = 6,
-#         R              = 8,
-#         learning_rate  = 1e-3,
-#         num_epochs     = 50,
-#         batch_size     = 32,
-#         beta           = 0.1,
-#         lambda_ipt     = 1.0,
-#         dataset_kwargs = dict(root="./data", train=True, num_points=256),
-#     )
-#     train(config)
+    l_max_values = [2, 4, 6]
     
+    lebedev_orders = [38, 50, 86, 110]
+    
+    experiments = list(itertools.product(l_max_values, lebedev_orders))
+    
+    print(f"[INFO] Queued {len(experiments)} experimental runs.")
+    
+    for l_max, l_order in experiments:
+        print("\n" + "="*60)
+        print(f"=== STARTING RUN: l_max = {l_max} | lebedev_order = {l_order} ===")
+        print("="*60 + "\n")
+        
+        config = dict(
+            lebedev_order  = l_order,     
+            l_max          = l_max,
+            R              = 8,
+            learning_rate  = 1e-3,
+            num_epochs     = 10, 
+            batch_size     = 32,
+            beta           = 0.1,
+            lambda_ipt     = 1.0,
+            dataset_kwargs = dict(root="./data", train=True, num_points=256),
+        )
+        
+        try:
+            train(config)
+        except Exception as e:
+            print(f"[ERROR] Run failed for l_max={l_max}, lebedev_order={l_order}.")
+            print(f"[ERROR] Exception: {e}")
+            continue 

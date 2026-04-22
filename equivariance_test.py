@@ -41,7 +41,7 @@ def equivariance_error(
     
     #random rotation
     for i in range(N+1):
-        theta = i / (N*2*np.pi) 
+        theta = i / N * 2 * np.pi
         rot = o3.matrix_z(torch.tensor(theta))
         
         #F(g·pc)
@@ -102,7 +102,7 @@ def run_equivariance_test(
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dirs, weights = get_directions(order=29)
+    dirs, weights = get_directions(110)
     dirs, weights = dirs.to(device), weights.to(device)
 
     model = IPTVAEPipeline(dirs, weights, l_max=6, R=8).to(device)
