@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader
-
+ 
 from get_zernikegrams import compute_pointwise_coefficients
 from get_directions import get_directions
 from get_ipt import compute_ect_point_cloud
@@ -11,7 +11,7 @@ from spherical_harmonics import SphericalHarmonicProjection
 from vae import EquivariantVAE
 from equivariant_decoder import EquivariantDecoder
 from get_mnist import PointCloudMNIST
-
+ 
 class IPTVAEPipeline(nn.Module):
     def __init__(self, 
                  dirs: torch.Tensor, 
@@ -57,12 +57,12 @@ class IPTVAEPipeline(nn.Module):
         c_zernike = compute_pointwise_coefficients(pc, l_max=self.l_max, R=self.R)
         
         # Target -> VAE -> VAE Output Vector
-        v_raw, c_vae_out, mu, logvar = self.vae(c_ipt_sh)
+        v_raw, c_vae_out, mu, logvar, logvar_expanded = self.vae(c_ipt_sh)
         
         # VAE Output Vector -> Equivariant Decoder 
         c_pred = self.decoder(v_raw) 
         
-        return c_pred, c_zernike, c_ipt_sh, c_vae_out, mu, logvar
+        return c_pred, c_zernike, c_ipt_sh, c_vae_out, mu, logvar_expanded
     
 def compute_loss(
     c_pred:    torch.Tensor,  
@@ -77,11 +77,11 @@ def compute_loss(
 ) -> dict:
     """
     L_zernike   cosine loss between Zernike(PC) and equivariant decoder output
-
+ 
     L_ipt_sh    MSE between c_ipt_sh (VAE input) and c_vae_out (VAE reconstruction)
-
+ 
     L_kl        KL divergence of the VAE posterior from the standard normal prior
-
+ 
     Total = L_zernike + lambda_ipt * L_ipt_sh + beta * L_kl
     """
     B, num_sh, R = c_pred.shape
@@ -99,9 +99,9 @@ def compute_loss(
         
     L_zernike = torch.stack(zernike_terms).mean()
     L_ipt_sh = F.mse_loss(c_vae_out, c_ipt_sh)
-    L_kl = -0.5 * (1 + logvar_raw - mu_scalars.pow(2) - logvar_raw.exp()).sum(dim=-1).mean()
+    L_kl = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp()).sum(dim=-1).mean()
     total = L_zernike + lambda_ipt * L_ipt_sh + beta * L_kl
-
+ 
     return dict(
         loss      = total,
         L_zernike = L_zernike.detach(),

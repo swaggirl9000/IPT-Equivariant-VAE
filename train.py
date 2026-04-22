@@ -87,7 +87,7 @@ def train(config: dict):
 if __name__ == "__main__":
     l_max_values = [2, 4, 6]
     
-    lebedev_orders = [38, 50, 86, 110]
+    lebedev_orders = [35, 47, 83, 107]
     
     experiments = list(itertools.product(l_max_values, lebedev_orders))
     
