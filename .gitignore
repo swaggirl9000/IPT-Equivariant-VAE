@@ -46,3 +46,4 @@ train_output_*.txt
 *.swp
 .DS_Store
 Thumbs.db
+checkpoints/
