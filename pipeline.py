@@ -165,46 +165,37 @@ class IPTVAEPipeline(nn.Module):
         c_zernike = compute_pointwise_coefficients(pc, l_max=self.l_max, R=self.R)
 
         # SH coefficients -> VAE -> v_raw
-        v_raw, mu, logvar_expanded = self.vae(c_ipt_sh)
+        v_raw, c_vae_out, mu, logvar_expanded = self.vae(c_ipt_sh)
 
         # v_raw -> Equivariant decoder -> predicted Zernike-space vector
         c_pred = self.decoder(v_raw)
 
-        return c_pred, c_zernike, mu, logvar_expanded
+        return c_pred, c_zernike, c_ipt_sh, c_vae_out, mu, logvar_expanded
+
 
 
 def compute_loss(
-    c_pred:          torch.Tensor,
-    c_zernike:       torch.Tensor,
-    mu:              torch.Tensor,
-    logvar_expanded: torch.Tensor,
-    l_max:           int,
-    beta:            float = 0.0,
+    c_pred, c_zernike, c_ipt_sh, c_vae_out,
+    mu, logvar_expanded,
+    l_max, beta=0.0, lambda_ipt=1.0,
 ) -> dict:
-    """
-    L_zernike   per-l cosine loss: Zernike(PC) vs equivariant decoder output
-    L_kl        KL divergence of the VAE posterior from N(0, I)
-                weighted by beta — use a warmup schedule in train.py
-
-    Total = L_zernike + beta * L_kl
-    """
     B, _, _ = c_pred.shape
-
-    # Flatten all SH coefficients and radial channels into a single vector
-    # per batch element so every coefficient is weighted equally.
     a = c_pred.reshape(B, -1)
     b = c_zernike.reshape(B, -1)
     L_zernike = (1.0 - F.cosine_similarity(a, b, dim=1)).mean()
 
-    logvar_clamped = logvar_expanded.clamp(-10, 10)
-    L_kl = -0.5 * (
-        1 + logvar_clamped - mu.pow(2) - logvar_clamped.exp()
-    ).sum(dim=-1).mean()
+    L_ipt_sh = F.mse_loss(c_vae_out, c_ipt_sh)
 
-    total = L_zernike + beta * L_kl
+    logvar_clamped = logvar_expanded.clamp(-4, 4)
+    L_kl = -0.5 * (1 + logvar_clamped - mu.pow(2) - logvar_clamped.exp()).sum(dim=-1).mean()
+
+    L_kl = L_kl / logvar_expanded.shape[-1]
+ 
+    total = L_zernike + lambda_ipt * L_ipt_sh + beta * L_kl
 
     return dict(
         loss      = total,
         L_zernike = L_zernike.detach(),
+        L_ipt_sh  = L_ipt_sh.detach(),
         L_kl      = L_kl.detach(),
     )

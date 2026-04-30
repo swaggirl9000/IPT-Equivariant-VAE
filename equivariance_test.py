@@ -29,7 +29,7 @@ def equivariance_error(
     pc = pc.to(device)
     
     with torch.no_grad():
-        c_pred, _, _, _ = model(pc)
+        c_pred, _, _, _, _, _ = model(pc)
         
         l_max  = model.l_max
     errors = []
@@ -40,7 +40,7 @@ def equivariance_error(
         # F(g · pc)
         pc_rotated = pc @ rot.T
         with torch.no_grad():
-            c_pred_rot, _, _, _ = model(pc_rotated)
+            c_pred_rot, _, _, _, _, _ = model(pc_rotated)
 
         # g · F(pc)
         c_rotated_output = torch.zeros_like(c_pred)
@@ -175,15 +175,3 @@ if __name__ == "__main__":
         n_trials     = 5,
         from_dataset = dataset,
     )
-
-# if __name__ == "__main__":
-#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-#     dirs, weights = get_directions(110)
-#     dirs, weights = dirs.to(device), weights.to(device)
-
-#     model = IPTVAEPipeline(dirs, weights, l_max=6, R=8).to(device)
-
-#     angles, all_errors = run_equivariance_test(
-#         model, device=str(device), N=100, n_trials=5
-#     )
