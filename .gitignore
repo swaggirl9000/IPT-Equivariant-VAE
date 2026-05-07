@@ -47,3 +47,6 @@ train_output_*.txt
 .DS_Store
 Thumbs.db
 checkpoints/
+results/
+interpolations/
+*.png

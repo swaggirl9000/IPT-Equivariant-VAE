@@ -4,51 +4,50 @@ from e3nn import o3
 
 from get_directions import get_directions
 from pipeline import IPTVAEPipeline
+from train import load_checkpoint
+
 
 def equivariance_error(
-    model:      IPTVAEPipeline,
-    pc:         torch.Tensor,   
-    N:          int = 100,
-    device:     str = "cpu",
-) -> tuple[list, list]:
+    model:  IPTVAEPipeline,
+    pc:     torch.Tensor,
+    N:      int = 100,
+    device: str = "cpu",
+) -> list:
     """
     Test equivariance of the full pipeline.
 
-    For each rotation g:
-        F(g · pc)      rotate input, then run pipeline
-        g · F(pc)      run pipeline, then rotate output 
+    For each of N random SO(3) rotations g:
+        F(g · pc)   rotate input, then run pipeline
+        g · F(pc)   run pipeline, then rotate output
 
     Equivariance error = ||F(g·pc) - g·F(pc)|| / ||F(pc)||
-
-    Returns
-    -------
-    angles : list of rotation angles in radians
-    errors : list of relative equivariance errors
     """
     model.eval()
     pc = pc.to(device)
-    
+
     with torch.no_grad():
         c_pred, _, _, _, _, _ = model(pc)
-        
-        l_max  = model.l_max
+
+    l_max  = model.l_max
     errors = []
 
     for _ in range(N):
-        rot = o3.rand_matrix().to(device)
+        rot_cpu = o3.rand_matrix()          # always CPU — required by e3nn
+        rot_gpu = rot_cpu.to(device)        # GPU copy for point cloud rotation
 
-        # F(g · pc)
-        pc_rotated = pc @ rot.T
+        # F(g · pc) — rotate input on GPU then run model
+        pc_rotated = pc @ rot_gpu.T
         with torch.no_grad():
             c_pred_rot, _, _, _, _, _ = model(pc_rotated)
 
-        # g · F(pc)
+        # g · F(pc) — apply Wigner D matrices to model output
         c_rotated_output = torch.zeros_like(c_pred)
         sh_idx = 0
         for l in range(l_max + 1):
-            m = 2 * l + 1
+            m         = 2 * l + 1
             irrep_str = f"1x{l}{'e' if l % 2 == 0 else 'o'}"
-            D_l = o3.Irreps(irrep_str).D_from_matrix(rot)
+            D_l       = o3.Irreps(irrep_str).D_from_matrix(rot_cpu)  # CPU tensor in
+            D_l       = D_l.to(device)                                # move result to GPU
 
             block         = c_pred[:, sh_idx:sh_idx + m, :]
             rotated_block = torch.einsum("ij, bjr -> bir", D_l, block)
@@ -60,55 +59,16 @@ def equivariance_error(
         errors.append(norm_diff / (norm_output + 1e-8))
 
     return errors
-    
-    # l_max = model.l_max
-    # R = model.R
-    # F = (l_max + 1) ** 2
-    
-    # angles = []
-    # errors = []
-    
-    # #random rotation
-    # for i in range(N+1):
-    #     theta = i / N * 2 * np.pi
-    #     rot = o3.matrix_z(torch.tensor(theta))
-        
-    #     #F(g·pc)
-    #     pc_rotated = (pc @ rot.T.to(device))
-    #     with torch.no_grad():
-    #         c_pred_rot, _, _, _, _, _ = model(pc_rotated)
-            
-    #     #g·F(pc)
-    #     c_rotated_output = torch.zeros_like(c_pred)
-    #     sh_idx = 0
-    #     for l in range(l_max + 1):
-    #         m = 2 * l + 1
-    #         irrep_str = f"1x{l}{'e' if l % 2 == 0 else 'o'}"
-    #         D_l = o3.Irreps(irrep_str).D_from_matrix(rot)   
-    #         D_l = D_l.to(device)
 
-    #         block = c_pred[:, sh_idx:sh_idx+m, :]         
-    #         rotated_block = torch.einsum("ij, bjr -> bir", D_l, block)
-    #         c_rotated_output[:, sh_idx:sh_idx+m, :] = rotated_block
-    #         sh_idx += m
-        
-    #     norm_output   = c_pred.norm().item()
-    #     norm_diff     = (c_pred_rot - c_rotated_output).norm().item()
-    #     rel_error     = norm_diff / (norm_output + 1e-8)
-
-    #     angles.append(theta)
-    #     errors.append(rel_error)
-        
-    # return angles, errors
 
 def run_equivariance_test(
-    model:    IPTVAEPipeline,
-    device:   str = "cpu",
-    N:        int = 100,
-    n_trials: int = 5,
+    model:        IPTVAEPipeline,
+    device:       str = "cpu",
+    N:            int = 100,
+    n_trials:     int = 5,
     from_dataset: torch.utils.data.Dataset = None,
 ) -> np.ndarray:
-    
+
     model.eval()
     all_errors = []
 
@@ -118,7 +78,7 @@ def run_equivariance_test(
         if from_dataset is not None:
             idx = torch.randint(len(from_dataset), (1,)).item()
             pc, _ = from_dataset[idx]
-            pc = pc.unsqueeze(0) 
+            pc = pc.unsqueeze(0)
         else:
             pc = torch.randn(1, 256, 3)
             pc = pc / pc.norm(dim=-1, keepdim=True).clamp(min=1e-8) * 0.9
@@ -133,45 +93,61 @@ def run_equivariance_test(
     print(f"  Std  error : {all_errors.std():.6f}")
 
     return all_errors
-    # model.eval()
-    # errors = []
-    
-    # for trial in range(n_trials):
-    #     print(f"Trial {trial+1}/{n_trials}...")
-    #     pc = torch.randn(1, 256, 3)
-    #     pc[:, :, 2] = 0.0                 
-    #     pc = pc / pc.norm(dim=-1, keepdim=True).clamp(min=1e-8) * 0.9
-        
-    #     angles, error = equivariance_error(model, pc, N=N, device=device)
-    #     errors.append(error)
-    
-    # errors = np.array(errors) 
-    # mean_err   = errors.mean(axis=0)
-    # std_err    = errors.std(axis=0)
-    
-    # print(f"\nMean equivariance error across all angles: {mean_err.mean():.6f}")
-    # print(f"Max  equivariance error across all angles: {mean_err.max():.6f}")
 
-    # return angles, errors
-    
+
 if __name__ == "__main__":
-    from get_mnist import PointCloudMNIST
+    from get_modelnet import PointCloudModelNet
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    dirs, weights = get_directions(19)
-    dirs, weights = dirs.to(device), weights.to(device)
+    checkpoints = [
+        "/home/aromanowski/IPT-Equivariant-VAE/checkpoint_modelnet10_lmax10_R8_leb59_v4.pt",
+    ]
 
-    model = IPTVAEPipeline(dirs, weights, l_max=2, R=8).to(device)
-    # Load trained weights:
-    # model.load_state_dict(torch.load("checkpoint_mnist_lmax2_leb7.pt"))
-
-    dataset = PointCloudMNIST(root="./data", train=False, num_points=256)
-
-    errors = run_equivariance_test(
-        model,
-        device       = str(device),
-        N            = 100,
-        n_trials     = 5,
-        from_dataset = dataset,
+    dataset = PointCloudModelNet(
+        root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ModelNet10",
+        num_points = 256,
+        split      = "test",
+        categories = 10,
     )
+    results = {}
+
+    for ckpt_path in checkpoints:
+        print("=" * 50)
+        print(f"Checkpoint: {ckpt_path}")
+
+        state_dict, ckpt_config = load_checkpoint(ckpt_path, device)
+
+        l_max         = ckpt_config.get("l_max", 2)
+        R             = ckpt_config.get("R", 8)
+        lebedev_order = ckpt_config.get("lebedev_order", 19)
+
+        print(f"  l_max={l_max} | R={R} | lebedev={lebedev_order}")
+        print("=" * 50)
+
+        dirs, weights = get_directions(lebedev_order)
+        dirs, weights = dirs.to(device), weights.to(device)
+
+        model = IPTVAEPipeline(dirs, weights, l_max=l_max, R=R).to(device)
+        model.load_state_dict(state_dict, strict=True)
+        model.eval()
+
+        errors = run_equivariance_test(
+            model,
+            device       = str(device),
+            N            = 100,
+            n_trials     = 5,
+            from_dataset = dataset,
+        )
+
+        results[ckpt_path] = {
+            "mean": float(errors.mean()),
+            "max":  float(errors.max()),
+            "std":  float(errors.std()),
+        }
+
+    print("\nSUMMARY")
+    print("-" * 50)
+    for name, r in results.items():
+        print(f"{name}")
+        print(f"  mean={r['mean']:.6f} | max={r['max']:.6f} | std={r['std']:.6f}")

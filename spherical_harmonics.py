@@ -6,9 +6,6 @@ from torch import nn
 class SphericalHarmonicProjection(nn.Module):
     """
     Projects a function sampled on the Lebedev grid onto SH coefficients.
-
-    Input : f  (B, D, R)  — ECT image, D = num Lebedev directions
-    Output: c  (B, C, R)  — SH coefficients, C = (l_max+1)²
     """
     def __init__(self, dirs: Tensor, weights: Tensor, l_max: int=9):
         super().__init__()
@@ -33,9 +30,6 @@ class SphericalHarmonicProjection(nn.Module):
 class InverseSphericalHarmonicProjection(nn.Module):
     """
     Reconstructs the ECT image on the Lebedev grid from SH coefficients.
-
-    Input : c     (B, C, R)  — SH coefficients
-    Output: f_hat (B, D, R)  — reconstructed ECT image on grid
     """
     def __init__(self, dirs: Tensor, l_max: int = 9):
         super().__init__()

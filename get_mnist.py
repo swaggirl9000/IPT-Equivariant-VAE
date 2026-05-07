@@ -5,11 +5,6 @@ import numpy as np
 
 class PointCloudMNIST(Dataset):
     def __init__(self, root='./data', train=True, num_points=256, threshold=0.1):
-        """
-        Downloads MNIST and converts it to 3D point clouds on the fly.
-        num_points: The exact 'N' dimension for your (B, N, 3) tensor.
-        threshold: Pixel intensity to consider 'solid'.
-        """
         super().__init__()
         self.num_points = num_points
         self.threshold = threshold
