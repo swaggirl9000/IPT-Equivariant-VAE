@@ -5,6 +5,7 @@ from e3nn import o3
 from get_directions import get_directions
 from pipeline import IPTVAEPipeline
 from train import load_checkpoint
+from get_shapenet import PointCloudShapeNet
 
 
 def equivariance_error(
@@ -96,19 +97,19 @@ def run_equivariance_test(
 
 
 if __name__ == "__main__":
-    from get_modelnet import PointCloudModelNet
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     checkpoints = [
-        "/home/aromanowski/IPT-Equivariant-VAE/checkpoint_modelnet10_lmax10_R8_leb59_v4.pt",
+        "/home/aromanowski/IPT-Equivariant-VAE/checkpoint_shapenet_pc15k_lmax12_R8_leb59.pt",
     ]
 
-    dataset = PointCloudModelNet(
-        root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ModelNet10",
-        num_points = 256,
+    dataset = PointCloudShapeNet(
+        root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ShapeNetCore.v2.PC15k",
+        categories = ["Airplane", "Car", "Chair"],
         split      = "test",
-        categories = 10,
+        num_points = 2048,
+        rotate=True,
     )
     results = {}
 

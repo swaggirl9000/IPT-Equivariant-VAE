@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 
 from get_directions import get_directions
 from get_mnist import PointCloudMNIST
-# from get_shapenet import PointCloudShapeNet
+from get_shapenet import PointCloudShapeNet
 from pipeline import IPTVAEPipeline, compute_loss
 from get_modelnet import PointCloudModelNet
 
@@ -17,8 +17,7 @@ def get_dataset(config: dict):
     elif name == "shapenet":
         return PointCloudShapeNet(**config["dataset_kwargs"])
     elif name == "shapenet_pc15k":
-        from get_shapenet import PointCloudShapeNetPC15k
-        return PointCloudShapeNetPC15k(**config["dataset_kwargs"])
+        return PointCloudShapeNet(**config["dataset_kwargs"])
     elif name == "modelnet": 
         return PointCloudModelNet(**config["dataset_kwargs"])
     else:
@@ -167,22 +166,22 @@ def load_checkpoint(ckpt_path: str, device):
 
 if __name__ == "__main__":
     config = dict(
-        dataset        = "modelnet",
+        dataset        = "shapenet_pc15k",
         lebedev_order  = 59,
-        l_max          = 10,
+        l_max          = 12,
         R              = 8,
         learning_rate  = 1e-3,
         num_epochs     = 50,
         batch_size     = 32,
-        beta_max       = 5e-3,        
-        warmup_epochs  = 20,          
-        checkpoint_path = "checkpoint_modelnet10_lmax10_R8_leb59_v4.pt",  
+        beta_max       = 1e-5,
+        warmup_epochs  = 20,
+        checkpoint_path = "checkpoint_shapenet_pc15k_lmax12_R8_leb59.pt",
         dataset_kwargs = dict(
-            root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ModelNet10",
-            num_points = 1024,
+            root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ShapeNetCore.v2.PC15k",
+            categories = ["Airplane", "Car", "Chair"],
             split      = "train",
-            categories = 10,
-            # random_rotate = True,   ← remove this line
+            num_points = 2048,
+            rotate=True,
         ),
     )
     train(config)
