@@ -3,11 +3,11 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from get_directions import get_directions
-from get_mnist import PointCloudMNIST
+from helper.get_mnist import PointCloudMNIST
 from get_shapenet import PointCloudShapeNet
 from pipeline import IPTVAEPipeline, compute_loss
-from get_modelnet import PointCloudModelNet
-
+from helper.get_modelnet import PointCloudModelNet
+from get_protiens import ProteinNeighborhoods          
 
 
 def get_dataset(config: dict):
@@ -18,8 +18,10 @@ def get_dataset(config: dict):
         return PointCloudShapeNet(**config["dataset_kwargs"])
     elif name == "shapenet_pc15k":
         return PointCloudShapeNet(**config["dataset_kwargs"])
-    elif name == "modelnet": 
+    elif name == "modelnet":
         return PointCloudModelNet(**config["dataset_kwargs"])
+    elif name == "protein_neighborhoods":
+        return ProteinNeighborhoods(**config["dataset_kwargs"])
     else:
         raise ValueError(f"Unknown dataset: {name}")
 
@@ -53,25 +55,27 @@ def train(config: dict):
     dataloader = DataLoader(data, batch_size=config["batch_size"], shuffle=True, num_workers=2)
     n          = len(dataloader)
 
+    accum = config.get("grad_accum_steps", 1)
+    eff_batch = config["batch_size"] * accum
+
     print(f"[INFO] Dataset: {config.get('dataset')} | "
           f"{len(data)} samples | {n} batches per epoch")
     print(f"[INFO] l_max={config['l_max']} | R={config['R']} | "
           f"lebedev={config['lebedev_order']} | "
+          f"batch={config['batch_size']} × accum={accum} = {eff_batch} effective | "
           f"beta_max={config['beta_max']:.2e} | warmup={config['warmup_epochs']} epochs\n")
 
     for epoch in range(config["num_epochs"]):
         beta = beta_schedule(epoch, config["warmup_epochs"], config["beta_max"])
-
         print(f"--- Epoch {epoch+1}/{config['num_epochs']} | beta={beta:.2e} ---")
 
         model.train()
         epoch_losses = {"loss": 0.0, "L_zernike": 0.0, "L_ipt_sh": 0.0, "L_kl": 0.0}
+        optimizer.zero_grad()
 
         for batch_idx, batch in enumerate(dataloader):
             pc, _ = batch
             pc = pc.to(device)
-
-            optimizer.zero_grad()
 
             c_pred, c_zernike, c_ipt_sh, c_recon, mu, logvar_expanded = model(pc)
 
@@ -86,9 +90,12 @@ def train(config: dict):
                 beta            = beta,
             )
 
-            losses["loss"].backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer.step()
+            (losses["loss"] / accum).backward()
+
+            if (batch_idx + 1) % accum == 0 or (batch_idx + 1) == n:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                optimizer.step()
+                optimizer.zero_grad()
 
             for k in epoch_losses:
                 epoch_losses[k] += losses[k].item()
@@ -114,23 +121,11 @@ def train(config: dict):
             f"    lr={optimizer.param_groups[0]['lr']:.2e} | beta={beta:.2e}\n"
         )
 
-        # After epoch 1 (beta=0 probe), print suggested beta_max.
-        # if epoch == 0:
-            # suggested = recon_total / max(avg["L_kl"], 1.0)
-            # print(f"  [HINT] After beta=0 probe: "
-            #       f"L_zernike={avg['L_zernike']:.4f}, "
-            #       f"L_ipt_sh={avg['L_ipt_sh']:.4f}, "
-            #       f"KL={avg['L_kl']:.1f}")
-            # print(f"  [HINT] Suggested beta_max ≈ {suggested:.2e}  "
-            #       f"(so beta*KL ≈ L_zernike + L_ipt_sh at convergence)\n")
-
-        # Warn if beta is large enough to matter but KL is still unregularised.
         if beta > 0 and avg["L_kl"] > 100:
             print(f"  [WARN] KL={avg['L_kl']:.1f} is still very high at beta={beta:.2e}. "
                   f"beta*KL={beta*avg['L_kl']:.4f} vs recon={recon_total:.4f}.\n"
                   f"  Consider increasing beta_max so beta*KL ~ (L_zernike + L_ipt_sh).\n")
 
-        # Warn if KL term is overwhelming the reconstruction losses.
         if beta > 0 and (beta * avg["L_kl"]) > 10 * recon_total:
             print(f"  [WARN] beta*KL={beta*avg['L_kl']:.4f} >> recon={recon_total:.4f}. "
                   f"The KL term is dominating — reduce beta_max or extend warmup_epochs.\n")
@@ -140,9 +135,9 @@ def train(config: dict):
         {
             "state_dict": model.state_dict(),
             "config": {
-                "l_max":          config["l_max"],
-                "R":              config["R"],
-                "lebedev_order":  config["lebedev_order"],
+                "l_max":         config["l_max"],
+                "R":             config["R"],
+                "lebedev_order": config["lebedev_order"],
             },
         },
         ckpt_path,
@@ -152,39 +147,59 @@ def train(config: dict):
 
 def load_checkpoint(ckpt_path: str, device):
     raw = torch.load(ckpt_path, map_location=device, weights_only=False)
-
     if isinstance(raw, dict) and "state_dict" in raw:
-        state_dict   = raw["state_dict"]
-        ckpt_config  = raw.get("config", {})
+        state_dict  = raw["state_dict"]
+        ckpt_config = raw.get("config", {})
     else:
         state_dict  = raw
         ckpt_config = {}
         print(f"[WARN] {ckpt_path} is a legacy checkpoint with no metadata. "
               "You must supply l_max, R, lebedev_order manually.")
-
     return state_dict, ckpt_config
 
+
 if __name__ == "__main__":
-    config = dict(
-        dataset        = "shapenet_pc15k",
-        lebedev_order  = 59,
-        l_max          = 12,
-        R              = 8,
-        learning_rate  = 1e-3,
-        num_epochs     = 50,
-        batch_size     = 32,
-        beta_max       = 1e-5,
-        warmup_epochs  = 20,
-        checkpoint_path = "checkpoint_shapenet_pc15k_lmax12_R8_leb59.pt",
-        dataset_kwargs = dict(
-            root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ShapeNetCore.v2.PC15k",
-            categories = ["Airplane", "Car", "Chair"],
-            split      = "train",
-            num_points = 2048,
-            rotate=True,
+    config_proteins = dict(
+        dataset          = "protein_neighborhoods",
+        lebedev_order    = 59,
+        l_max            = 6,
+        R                = 8,
+        learning_rate    = 1e-3,
+        num_epochs       = 100,
+        batch_size       = 32,
+        grad_accum_steps = 1,
+        beta_max         = 1e-5,
+        warmup_epochs    = 10,
+        checkpoint_path  = "checkpoint_ipt_vae_proteins_lmax6_R8_leb59.pt",
+        dataset_kwargs   = dict(
+            processed_dir = "/gpfs/home3/aromanowski/IPT-Equivariant-VAE/data/protein/processed",
+            num_points    = 512,
+            split         = "train",
         ),
     )
-    train(config)
+    train(config_proteins)
+    
+# if __name__ == "__main__":
+#     config = dict(
+#         dataset        = "shapenet_pc15k",
+#         lebedev_order  = 59,
+#         l_max          = 12,
+#         R              = 8,
+#         learning_rate  = 1e-3,
+#         num_epochs     = 50,
+#         batch_size     = 32,
+#         beta_max       = 1e-5,
+#         warmup_epochs  = 20,
+#         checkpoint_path = "checkpoint_shapenet_pc15k_lmax12_R8_leb59.pt",
+#         dataset_kwargs = dict(
+#             root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ShapeNetCore.v2.PC15k",
+#             categories = ["Airplane", "Car", "Chair"],
+#             split      = "train",
+#             num_points = 2048,
+#             rotate=True,
+#         ),
+#     )
+#     train(config)
 
     # config = dict(
     #     dataset        = "shapenet",

@@ -5,7 +5,8 @@ from e3nn import o3
 from get_directions import get_directions
 from pipeline import IPTVAEPipeline
 from train import load_checkpoint
-from get_shapenet import PointCloudShapeNet
+# from get_shapenet import PointCloudShapeNet
+from get_protiens import ProteinNeighborhoods  
 
 
 def equivariance_error(
@@ -101,15 +102,13 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     checkpoints = [
-        "/home/aromanowski/IPT-Equivariant-VAE/checkpoint_shapenet_pc15k_lmax12_R8_leb59.pt",
+        "/gpfs/home3/aromanowski/IPT-Equivariant-VAE/checkpoint_ipt_vae_proteins_lmax6_R8_leb59.pt",
     ]
 
-    dataset = PointCloudShapeNet(
-        root       = "/home/aromanowski/IPT-Equivariant-VAE/data/ShapeNetCore.v2.PC15k",
-        categories = ["Airplane", "Car", "Chair"],
-        split      = "test",
-        num_points = 2048,
-        rotate=True,
+    dataset = ProteinNeighborhoods(
+        processed_dir = "/gpfs/home3/aromanowski/IPT-Equivariant-VAE/data/protein/processed",
+        split         = "test",
+        num_points    = 512,   
     )
     results = {}
 

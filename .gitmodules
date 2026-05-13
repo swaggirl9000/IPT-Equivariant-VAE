@@ -1,0 +1,6 @@
+[submodule "baselines/holographic_vae"]
+	path = baselines/holographic_vae
+	url = https://github.com/gvisani/Holographic-VAE
+[submodule "baselines/ipt"]
+	path = baselines/ipt
+	url = https://github.com/aidos-lab/inner-product-transforms.git
