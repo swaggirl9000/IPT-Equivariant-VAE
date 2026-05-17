@@ -22,13 +22,17 @@ wheels/
 .env
 .venv
 venv/
+test_pdbs/
+*.pyc
 
 *.pt
 *.pth
 *.ckpt
 checkpoints/
 models/
-
+jobs/
+logs/
+helper/
 data/
 datasets/
 *.npy
@@ -50,5 +54,7 @@ checkpoints/
 results/
 interpolations/
 *.png
-.baselines/
-.jobs/
+baselines/
+jobs/
+helper/
+data/

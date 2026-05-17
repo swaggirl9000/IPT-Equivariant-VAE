@@ -34,22 +34,22 @@ def equivariance_error(
     errors = []
 
     for _ in range(N):
-        rot_cpu = o3.rand_matrix()          # always CPU — required by e3nn
-        rot_gpu = rot_cpu.to(device)        # GPU copy for point cloud rotation
+        rot_cpu = o3.rand_matrix()       
+        rot_gpu = rot_cpu.to(device)       
 
-        # F(g · pc) — rotate input on GPU then run model
+        # F(g · pc) 
         pc_rotated = pc @ rot_gpu.T
         with torch.no_grad():
             c_pred_rot, _, _, _, _, _ = model(pc_rotated)
 
-        # g · F(pc) — apply Wigner D matrices to model output
+        # g · F(pc) 
         c_rotated_output = torch.zeros_like(c_pred)
         sh_idx = 0
         for l in range(l_max + 1):
             m         = 2 * l + 1
             irrep_str = f"1x{l}{'e' if l % 2 == 0 else 'o'}"
-            D_l       = o3.Irreps(irrep_str).D_from_matrix(rot_cpu)  # CPU tensor in
-            D_l       = D_l.to(device)                                # move result to GPU
+            D_l       = o3.Irreps(irrep_str).D_from_matrix(rot_cpu)
+            D_l       = D_l.to(device)                                
 
             block         = c_pred[:, sh_idx:sh_idx + m, :]
             rotated_block = torch.einsum("ij, bjr -> bir", D_l, block)
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     checkpoints = [
-        "/gpfs/home3/aromanowski/IPT-Equivariant-VAE/checkpoint_ipt_vae_proteins_lmax6_R8_leb59.pt",
+        "/gpfs/home3/aromanowski/IPT-Equivariant-VAE/checkpoint_ipt_vae_proteins_lmax4_R8_leb59.pt",
     ]
 
     dataset = ProteinNeighborhoods(
