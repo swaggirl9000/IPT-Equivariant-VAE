@@ -4,3 +4,6 @@
 [submodule "baselines/ipt"]
 	path = baselines/ipt
 	url = https://github.com/aidos-lab/inner-product-transforms.git
+[submodule "my_pipeline/ipt"]
+	path = my_pipeline/ipt
+	url = https://github.com/aidos-lab/inner-product-transforms.git

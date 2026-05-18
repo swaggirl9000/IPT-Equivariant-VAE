@@ -38,24 +38,26 @@ class HVAEDataset(Dataset):
     def __init__(self, hdf5_path: str, data_irreps: str):
         super().__init__()
         self.hdf5_path = hdf5_path
-        
+
         from e3nn import o3
         irreps = o3.Irreps(data_irreps)
 
+        self.data_irreps = irreps
+
         with h5py.File(hdf5_path, "r") as f:
-            data = f["data"]          
+            data = f["data"]
             fields = data.dtype.names
             zg = torch.tensor(data["zernikegram"][:]).float()
 
             self.zg_keys = []
             self.zg_data = {}
             start = 0
-            
+
             for mul, ir in irreps:
                 l = ir.l
-                key = l  
+                key = l
                 self.zg_keys.append(key)
-                
+
                 dim = mul * (2 * l + 1)
                 chunk = zg[:, start : start + dim]
 
@@ -84,6 +86,7 @@ class HVAEDataset(Dataset):
         rot   = (self.rots[idx]  if self.rots    is not None else torch.eye(3).flatten())
         sid   = self.ids[idx]    if self.ids     is not None else idx
         return X, X_vec, y, (rot, sid)
+
 
 def load_hvae(experiment_dir: str, checkpoint_name: str, device: str):
     hparams_path = os.path.join(experiment_dir, "hparams.json")
@@ -115,17 +118,22 @@ def load_hvae(experiment_dir: str, checkpoint_name: str, device: str):
     return model, hparams, data_irreps
 
 
-def rotate_irreps_dict(X: dict, rot_cpu: torch.Tensor, device: str) -> dict:
-    """
-    Apply SO(3) rotation to every irrep in X using Wigner-D matrices.
-    """
+def rotate_irreps_dict(X: dict, rot_cpu: torch.Tensor, device: str,
+                       data_irreps: o3.Irreps = None) -> dict:
+    parity_map: dict[int, str] = {}
+    if data_irreps is not None:
+        for mul, ir in data_irreps:
+            # ir.p is +1 (even) or -1 (odd); convert to e3nn char
+            parity_map[ir.l] = "e" if ir.p == 1 else "o"
+
     X_rot = {}
-    for l in X.keys():  
-        irrep_str   = f"1x{l}e"
-        D_l         = o3.Irreps(irrep_str).D_from_matrix(rot_cpu).to(device) 
-        v           = X[l].to(device)                              
-        
-        X_rot[l]    = torch.einsum("ij, bcj -> bci", D_l, v)
+    for l in X.keys():
+        p_char  = parity_map.get(l, "e")          # default 'e' if irreps unknown
+        irrep_str = f"1x{l}{p_char}"
+        D_l     = o3.Irreps(irrep_str).D_from_matrix(rot_cpu).to(device)
+        v       = X[l].to(device)
+
+        X_rot[l] = torch.einsum("ij, bcj -> bci", D_l, v)
     return X_rot
 
 
@@ -138,44 +146,62 @@ def flatten_dict(X: dict) -> torch.Tensor:
 def equivariance_error(
     model,
     X: dict,
-    N: int = 100,   
+    N: int = 100,
     device: str = "cuda",
+    data_irreps: o3.Irreps = None,
 ) -> np.ndarray:
-    
+    """
+    Measure SO(3) equivariance error:
+        err = || F(D(g)·X) - D(g)·F(X) || / || F(X) ||
+
+    FIX: the original code called model() (full VAE forward) for both
+    F(X) and F(D(g)·X).  Each call draws a fresh noise sample
+    z = mu + eps*sigma, so the two outputs differ by stochastic noise
+    even for a perfectly equivariant model.  This inflates the error.
+
+    The fix uses model.encode() to obtain the posterior mean mu
+    deterministically, then model.decode(mu) for both passes so the
+    only difference between the two paths is the input rotation.
+    """
     model.eval()
-    X     = put_dict_on_device(X, device)
+    X = put_dict_on_device(X, device)
 
     frame_id = torch.eye(3, device=device).unsqueeze(0)
-    
-    x_vec_flat = flatten_dict(X)
 
-    _, _, baseline_recon, _ = model(X, x_vec=x_vec_flat, frame=frame_id)
+    # --- FIX: encode(x) takes only x — no x_vec argument.
+    #     It returns ((z_mean, z_log_var), learned_frame); unpack accordingly
+    #     and use z_mean directly to skip the stochastic reparameterisation. ---
+    (z_mean, _z_log_var), learned_frame = model.encode(X)
+    # If the model learned its own frame, honour it; otherwise use identity.
+    frame = learned_frame if learned_frame is not None else frame_id
+    baseline_recon = model.decode(z_mean, frame)        # deterministic decode
+
     if baseline_recon is None:
-        raise RuntimeError("model() returned None for recon_X")
+        raise RuntimeError("model.decode() returned None for recon_X")
 
-    baseline_flat = flatten_dict(baseline_recon)    
+    baseline_flat = flatten_dict(baseline_recon)
     baseline_norm = baseline_flat.norm().item()
 
     errors = []
     for _ in range(N):
-        rot_cpu = o3.rand_matrix()                    
+        rot_cpu = o3.rand_matrix()
 
-        # F(D(g)·X)
-        X_rot = rotate_irreps_dict(X, rot_cpu, device)
-        
-        x_rot_vec_flat = flatten_dict(X_rot)
-        
-        _, _, recon_of_rotated, _ = model(X_rot, x_vec=x_rot_vec_flat, frame=frame_id)
-        f_of_rotated = flatten_dict(recon_of_rotated)   
+        # F(D(g)·X) — encode rotated input, use its z_mean, decode deterministically
+        X_rot = rotate_irreps_dict(X, rot_cpu, device, data_irreps)
+        (z_mean_rot, _), learned_frame_rot = model.encode(X_rot)
+        frame_rot = learned_frame_rot if learned_frame_rot is not None else frame_id
+        recon_of_rotated = model.decode(z_mean_rot, frame_rot)
+        f_of_rotated = flatten_dict(recon_of_rotated)
 
-        # D(g)·F(X) 
-        rotated_baseline = rotate_irreps_dict(baseline_recon, rot_cpu, device)
-        d_of_baseline    = flatten_dict(rotated_baseline)  
+        # D(g)·F(X) — rotate the baseline reconstruction
+        rotated_baseline = rotate_irreps_dict(baseline_recon, rot_cpu, device, data_irreps)
+        d_of_baseline    = flatten_dict(rotated_baseline)
 
         diff = (f_of_rotated - d_of_baseline).norm().item()
         errors.append(diff / (baseline_norm + 1e-8))
 
     return np.array(errors)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -196,6 +222,7 @@ if __name__ == "__main__":
     print(f"[INFO] Device: {device}")
 
     model, _, data_irreps = load_hvae(args.experiment_dir, args.checkpoint_name, device)
+    irreps_obj = o3.Irreps(str(data_irreps))
 
     dataset     = HVAEDataset(args.data_path, data_irreps=str(data_irreps))
     loader      = DataLoader(dataset, batch_size=1, shuffle=True, drop_last=False)
@@ -205,12 +232,13 @@ if __name__ == "__main__":
     for trial in range(args.n_trials):
         print(f"Trial {trial + 1}/{args.n_trials} …")
         try:
-            X, _, y, (rot, _) = next(loader_iter)  
+            X, _, y, (rot, _) = next(loader_iter)
         except StopIteration:
             loader_iter = iter(loader)
             X, _, y, (rot, _) = next(loader_iter)
 
-        errors = equivariance_error(model, X, N=args.N, device=device) 
+        errors = equivariance_error(model, X, N=args.N, device=device,
+                                    data_irreps=irreps_obj)
         all_errors.extend(errors.tolist())
 
     all_errors = np.array(all_errors)
