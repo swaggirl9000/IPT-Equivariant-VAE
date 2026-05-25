@@ -117,6 +117,28 @@ def train(
     v          = dirs.T.to(fabric.device)  
     chunk_size = getattr(ect_cfg, "chunk_size", 64) 
 
+    # ── Round-trip sanity check ───────────────────────────────────────────── #
+    # Verifies that SH forward + inverse is a near-identity.
+    # If error >> 0.1, the normalization conventions in SphericalHarmonicProjection
+    # and InverseSphericalHarmonicProjection are mismatched — fix before training.
+    model.eval()
+    with torch.no_grad():
+        _pc_check = next(iter(dataloader))
+        _v_check  = v
+        _ect_check = compute_ect_chunked(
+            x=_pc_check, v=_v_check,
+            radius=ect_cfg.r, resolution=ect_cfg.resolution,
+            scale=ect_cfg.scale, chunk_size=chunk_size,
+        )
+        _sh_check       = sh_transform(_ect_check)
+        _ect_recon_check = inverse_sh_transform(_sh_check)
+        _rt_err = (_ect_check - _ect_recon_check).abs().mean().item()
+        print(f"[sanity] SH round-trip error: {_rt_err:.6f}  "
+              f"(target < 0.05 — if >> 0.1 check normalization convention)")
+        del _pc_check, _ect_check, _sh_check, _ect_recon_check
+    model.train()
+    # ─────────────────────────────────────────────────────────────────────── #
+
     step_count = 0
     for epoch in range(trainerconfig.max_epochs):
         model.train()
@@ -148,7 +170,7 @@ def train(
             # KLD with free bits — prevents posterior collapse on low-info dims.
             logvar_exp  = model.expand_logvar(logvar.clamp(min=-10, max=10))
             kld_per_dim = -0.5 * (1 + logvar_exp - mu ** 2 - logvar_exp.exp())
-            FREE_BITS   = 0.5  
+            FREE_BITS   = 0.0 
             kld_loss    = torch.clamp(kld_per_dim, min=FREE_BITS).sum(dim=1).mean()
 
             mse_loss = weighted_sh_mse(sh_recon, sh_gt, model.l_max)
@@ -161,7 +183,9 @@ def train(
                 modelconfig.beta_min,
                 modelconfig.beta_max,
             )
-            g_loss = mse_loss + beta * kld_loss + cd_loss
+            # CD_WEIGHT = 0.01
+            # g_loss = mse_loss + beta * kld_loss + CD_WEIGHT * cd_loss
+            g_loss = mse_loss + beta * kld_loss
 
             fabric.backward(g_loss)
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)

@@ -14,6 +14,7 @@ class SphericalHarmonicProjection(nn.Module):
             self.irreps,
             dirs_norm,
             normalize=True,
+            normalization="integral",
         )  
 
         weighted_basis = weights.unsqueeze(-1) * sh_basis  

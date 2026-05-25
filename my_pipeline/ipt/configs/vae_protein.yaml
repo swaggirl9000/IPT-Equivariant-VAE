@@ -44,11 +44,11 @@ trainer: &ref-trainer
 modelconfig:
   module: models.equiv_vae
   num_pts: 512
-  lr: 0.0001           # was 0.0005 — reduce to stop oscillation
-  latent_channels: 16  # was 64 — 16×25=400 dims, still expressive but regularisable
-  beta_min:    0.0     # start at zero for warmup
-  beta_max:    0.001   # was 0.000005 — needs to be ~200× larger to matter
-  beta_period: 200            
+  lr: 0.0001    
+  latent_channels: 32  
+  beta_min:    0.0     
+  beta_max:    0.0001   
+  beta_period: 300            
   l_max: 4 
   sh_input_channels: 64
   im_channels: 1
