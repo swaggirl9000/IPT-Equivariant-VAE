@@ -26,6 +26,7 @@ from loaders import (
 from metrics.loss import chamfer
 from spherical_harmonics import SphericalHarmonicProjection
 from transforms.ecttransform import Transform, TransformConfig
+from get_directions import get_directions
 
 import matplotlib
 matplotlib.use("Agg")
@@ -217,7 +218,6 @@ def evaluate(
         filename=f"{results_base_dir}/pcs_final.png",
     )
     print(f"Saved evaluation outputs to {results_base_dir}/")
-
 def main():
     parser = argparse.ArgumentParser(description="Joint VAE + Encoder training")
     parser.add_argument("--vae_config",     required=True,  type=str)
@@ -258,21 +258,16 @@ def main():
     dataloader    = fabric.setup_dataloaders(dm.train_dataloader)
     valdataloader = fabric.setup_dataloaders(dm.val_dataloader)
 
-    from transforms.ecttransform import Transform as EctTransform
-    ect_transform_layer = EctTransform(
-        TransformConfig(module="", ectconfig=enc_modelconfig.ectconfig)
-    )
-    v_raw = ect_transform_layer.v
-    dirs  = (v_raw.T if v_raw.shape[0] == 3 else v_raw).to(fabric.device)
-    assert dirs.shape[1] == 3, f"Expected (num_dirs, 3), got {dirs.shape}"
+    dirs, weights = get_directions(num_points=enc_modelconfig.ectconfig.num_thetas)
+    dirs    = dirs.to(fabric.device)
+    weights = weights.to(fabric.device)
 
-    weights      = torch.ones(dirs.shape[0], device=fabric.device)
     sh_transform = SphericalHarmonicProjection(
         dirs=dirs, weights=weights, l_max=enc_modelconfig.lmax
     )
     sh_transform = fabric.setup_module(sh_transform)
 
-    losstransform = EctTransform(
+    losstransform = Transform(
         TransformConfig(module="", ectconfig=enc_modelconfig.ectlossconfig)
     )
     losstransform = fabric.setup_module(losstransform)
@@ -294,7 +289,7 @@ def main():
         vae_model = torch.compile(vae_model)
         enc_model = torch.compile(enc_model)
 
-    optimizer_enc = Adam(enc_model.parameters(), lr=enc_modelconfig.learning_rate, betas=(0.5, 0.999))
+   optimizer_enc = Adam(enc_model.parameters(), lr=enc_modelconfig.learning_rate, betas=(0.5, 0.999))
 
     vae_model = fabric.setup_module(vae_model)
     enc_model, optimizer_enc = fabric.setup(enc_model, optimizer_enc)
