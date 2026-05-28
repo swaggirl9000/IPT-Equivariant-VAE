@@ -71,11 +71,3 @@ class Ect2DTransform:
 
     def __call__(self, x):
         return self.ect_fn(x)
-
-
-class RandomSamplePoints:
-    """Randomly Choose points"""
-
-    def __call__(self, x):
-        idx = np.random.choice(size=2048, replace=False)
-        return x[idx]

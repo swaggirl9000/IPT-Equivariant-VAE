@@ -174,31 +174,6 @@ def compute_all_metrics(sample_pcs, ref_pcs, batch_size, accelerated_cd=None):
 
     return results
 
-
-#######################################################
-# JSD : from https://github.com/optas/latent_3d_points
-#######################################################
-def unit_cube_grid_point_cloud(resolution, clip_sphere=False):
-    """Returns the center coordinates of each cell of a 3D grid with resolution^3 cells,
-    that is placed in the unit-cube.
-    If clip_sphere it True it drops the "corner" cells that lie outside the unit-sphere.
-    """
-    grid = np.ndarray((resolution, resolution, resolution, 3), np.float32)
-    spacing = 1.0 / float(resolution - 1)
-    for i in range(resolution):
-        for j in range(resolution):
-            for k in range(resolution):
-                grid[i, j, k, 0] = i * spacing - 0.5
-                grid[i, j, k, 1] = j * spacing - 0.5
-                grid[i, j, k, 2] = k * spacing - 0.5
-
-    if clip_sphere:
-        grid = grid.reshape(-1, 3)
-        grid = grid[norm(grid, axis=1) <= 0.5]
-
-    return grid, spacing
-
-
 if __name__ == "__main__":
     B, N = 2, 10
     x = torch.rand(B, N, 3)

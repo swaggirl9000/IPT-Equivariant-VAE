@@ -10,18 +10,6 @@ import yaml
 from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 from torch import nn
 
-
-def timeit_decorator(func):
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        timer = timeit.Timer(lambda: func(*args, **kwargs))
-        execution_time = timer.timeit(number=1)
-        print(f"Function {func.__name__!r} executed in {execution_time:.4f} seconds")
-        return func(*args, **kwargs)
-
-    return wrapper
-
-
 def load_module(config_dict: dict[Any, Any], classname: str) -> pydantic.BaseModel:
 
     module_name = config_dict.get("module", None)
@@ -104,61 +92,11 @@ def load_transform(config):
     return nn.Sequential(*transforms)
 
 
-# @timeit_decorator
 def load_object(obj):
     if isinstance(obj, dict):
         return SimpleNamespace(**obj)
     else:
         return obj
-
-
-# # @timeit_decorator
-# def load_config(path):
-#     """
-#     Loads the configuration yaml and parses it into an object with dot access.
-#     """
-#     with open(path, encoding="utf-8") as stream:
-#         # Load dict
-#         config_dict = yaml.safe_load(stream)
-#
-#         # Convert to namespace (access via config.data etc)
-#         config = json.loads(json.dumps(config_dict), object_hook=load_object)
-#     return config, config_dict
-
-
-def validate_configuration(run_config_dict: dict):
-    """
-    Loads the pydantic configuration object and checks if it is valid. This
-    ensures we can test all configurations for missing keys etc, before running
-    the experiments.
-    """
-
-    # Test the model config
-    module = importlib.import_module(run_config_dict["modelconfig"]["module"])
-    model_class = getattr(module, "BaseLightningModel")
-    config_class = getattr(module, "ModelConfig")
-    config_class(**run_config_dict["modelconfig"])
-
-    # Test the dataset
-    module = importlib.import_module(run_config_dict["data"]["module"])
-    model_class = getattr(module, "DataModule")
-    config_class = getattr(module, "DataModuleConfig")
-    config_class(**run_config_dict["data"])
-
-    assert "logger" in run_config_dict["loggers"]
-    assert "tags" in run_config_dict["loggers"]
-
-
-# @timeit_decorator
-def get_wandb_logger(config):
-    """
-    Loads the wandb logger.
-    """
-    wandb_logger = WandbLogger(
-        project=config.project, entity=config.entity, save_dir=config.save_dir
-    )
-
-    return wandb_logger
 
 
 def load_logger(config):
