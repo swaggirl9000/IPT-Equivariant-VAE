@@ -54,7 +54,6 @@ checkpoints/
 results/
 interpolations/
 *.png
-baselines/
 jobs/
 helper/
 data/

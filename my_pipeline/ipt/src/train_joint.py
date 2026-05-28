@@ -69,7 +69,7 @@ def weighted_sh_mse(
     offset = 0
     for l in range(l_max + 1):
         m   = 2 * l + 1
-        w   = 1.0 / m   #
+        w   = 1.0 / m
         loss = loss + w * F.mse_loss(
             pred[...,   offset:offset + m],
             target[..., offset:offset + m],
@@ -122,6 +122,13 @@ def train(
         enc_model.train()
 
         for pc in tqdm(dataloader, disable=no_progressbar):
+
+            assert pc.abs().max() < 2.0, (
+                f"GT point cloud out of expected [-1, 1] range: "
+                f"max abs = {pc.abs().max().item():.4f}. "
+                "Please normalise your dataset."
+            )
+
             optimizer_enc.zero_grad(set_to_none=True)
 
             # PC → ECT → SH  
@@ -136,12 +143,13 @@ def train(
                 sh_recon, _, _ = vae_model(sh_gt)
 
             pc_recon  = enc_model(sh_recon)
+
             cd_loss   = chamfer(pc_recon, pc)
             ipt_gt    = losstransform(pc)
             ipt_recon = losstransform(pc_recon)
             ipt_loss  = F.mse_loss(ipt_gt, ipt_recon)
 
-            loss = 1.0 * cd_loss + 10.0 * ipt_loss
+            loss = 1.0 * cd_loss + 0.1 * ipt_loss
 
             if torch.isnan(loss):
                 print(f"[warn] NaN loss at step {step} — skipping step")
@@ -152,7 +160,6 @@ def train(
             fabric.backward(loss)
 
             torch.nn.utils.clip_grad_norm_(enc_model.parameters(), max_norm=1.0)
-
             optimizer_enc.step()
 
             if step % 10 == 0:
@@ -160,7 +167,9 @@ def train(
                     f"epoch {epoch:04d}  step {step:06d} | "
                     f"loss {loss.item():.4f}  "
                     f"cd {cd_loss.item():.4f}  "
-                    f"ipt {ipt_loss.item():.4f}"
+                    f"ipt {ipt_loss.item():.4f}  "
+                    f"recon_range [{pc_recon.detach().min().item():.3f}, "
+                    f"{pc_recon.detach().max().item():.3f}]"
                 )
             step += 1
 
@@ -200,9 +209,11 @@ def evaluate(
             radius=ect_cfg.r, resolution=ect_cfg.resolution,
             scale=ect_cfg.scale, chunk_size=chunk_size,
         )
-        sh_gt             = sh_transform(ect)
-        
-        pc_recon          = enc_model(sh_gt)
+        sh_gt = sh_transform(ect)
+
+        sh_recon, _, _ = vae_model(sh_gt)
+
+        pc_recon = enc_model(sh_recon)
 
         recon_pcs_all.append(pc_recon.cpu())
         gt_pcs_all.append(pc.cpu())
@@ -218,6 +229,7 @@ def evaluate(
         filename=f"{results_base_dir}/pcs_final.png",
     )
     print(f"Saved evaluation outputs to {results_base_dir}/")
+
 def main():
     parser = argparse.ArgumentParser(description="Joint VAE + Encoder training")
     parser.add_argument("--vae_config",     required=True,  type=str)
@@ -289,7 +301,7 @@ def main():
         vae_model = torch.compile(vae_model)
         enc_model = torch.compile(enc_model)
 
-   optimizer_enc = Adam(enc_model.parameters(), lr=enc_modelconfig.learning_rate, betas=(0.5, 0.999))
+    optimizer_enc = Adam(enc_model.parameters(), lr=enc_modelconfig.learning_rate, betas=(0.5, 0.999))
 
     vae_model = fabric.setup_module(vae_model)
     enc_model, optimizer_enc = fabric.setup(enc_model, optimizer_enc)

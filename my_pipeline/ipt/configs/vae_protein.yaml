@@ -3,7 +3,7 @@ ectconfig: &ref-ectconfig
   num_thetas: 125
   resolution: 64
   scale: 8
-  r: 7
+  r: 1
   ect_type: "points"
   ambient_dimension: 3
   normalized: True
@@ -14,7 +14,7 @@ ectlossconfig: &ref-ectlossconfig
   num_thetas: 125
   resolution: 64
   scale: 8
-  r: 7
+  r: 1
   ect_type: "points"
   ambient_dimension: 3
   normalized: True
