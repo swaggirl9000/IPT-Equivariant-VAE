@@ -1,0 +1,27 @@
+module: models.vae_baseline
+latent_dim: 128
+num_pts: 2048
+learning_rate: 0.0001
+beta_period: 1560
+beta_min: 0.001
+beta_max: 0.01
+
+ectlossconfig:
+  num_thetas: 128
+  resolution: 128
+  scale: 8
+  r: 7
+  ect_type: "points"
+  ambient_dimension: 3
+  normalized: true
+  seed: 2024
+
+ectconfig:
+  seed: 2024
+  num_thetas: 128
+  resolution: 128
+  scale: 128
+  r: 7
+  ect_type: "points"
+  ambient_dimension: 3
+  normalized: true

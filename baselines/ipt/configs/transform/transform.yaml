@@ -1,0 +1,10 @@
+transforms:
+  - module: transforms.rotate
+    axis: 1
+    max_degrees: 5
+  - module: transforms.affine
+    mean_mean: [0.0, 0.0, 0.0]
+    mean_std: [0.06275183707475662, 0.11978594958782196, 0.45289620757102966]
+    scale_mean: 3.407453775405884
+    scale_std: 0.4171832799911499
+    max_scale: 7

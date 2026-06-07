@@ -10,6 +10,12 @@ import yaml
 from lightning.pytorch.loggers import TensorBoardLogger, WandbLogger
 from torch import nn
 
+from shapenet_datamodule import ShapeNetDataModule
+
+DATAMODULE_REGISTRY = {
+    "shapenet": ShapeNetDataModule,
+}
+
 def load_module(config_dict: dict[Any, Any], classname: str) -> pydantic.BaseModel:
 
     module_name = config_dict.get("module", None)
@@ -58,6 +64,9 @@ def load_config(path: str):
 
 
 def load_datamodule(config, dev: bool = False):
+    if config.module in DATAMODULE_REGISTRY:
+        return DATAMODULE_REGISTRY[config.module](config)
+
     module = importlib.import_module(config.module)
     train_dl, val_dl, test_dl, m, s = module.get_all_dataloaders(config, dev=dev)
     return SimpleNamespace(

@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+  - data@data: shapenet_airplane
+  - trainer@trainer: trainer
+  - transform@transform: transform
+  - modelconfig@modelconfig: vae
+
+logger:
+  module: loggers.wandblogger
+  project: vae-ect
+  entity: null
+  results_dir: vae_baseline
+  tags: []
+
+compile: false
+dev: false
+evaluate: false

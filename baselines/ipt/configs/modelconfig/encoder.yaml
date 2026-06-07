@@ -1,0 +1,23 @@
+module: models.encoder
+num_pts: 2048
+learning_rate: 0.0001
+
+ectconfig:
+  seed: 2024
+  num_thetas: 128
+  resolution: 128
+  scale: 128
+  r: 7
+  ect_type: "points"
+  ambient_dimension: 3
+  normalized: true
+
+ectlossconfig:
+  num_thetas: 64
+  resolution: 64
+  scale: 8
+  r: 7
+  ect_type: "points"
+  ambient_dimension: 3
+  normalized: true
+  seed: 2024

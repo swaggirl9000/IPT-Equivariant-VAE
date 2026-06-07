@@ -6,6 +6,7 @@ from torch import Tensor
 import networkx as nx
 import torch.nn as nn
 import torch.nn.functional as F
+import os
 
 pv.set_jupyter_backend("static")
 
@@ -68,3 +69,9 @@ def plot_ect(ect_gt, ect_pred, num_ects=5, filename=None):
     else:
         plt.show()
         
+
+def save_plots(ect_gt: Tensor, ect_pred: Tensor, plot_dir: str, step: int, num_ects: int = 5):
+    os.makedirs(plot_dir, exist_ok=True)
+    filename = os.path.join(plot_dir, f"recon_{step:06d}.png")
+    plot_ect(ect_gt, ect_pred, num_ects=num_ects, filename=filename)
+    plt.close("all")  

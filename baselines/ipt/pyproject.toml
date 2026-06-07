@@ -70,3 +70,6 @@ trainvae = "train_vae:main"
 
 
 
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]

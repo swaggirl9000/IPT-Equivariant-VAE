@@ -1,0 +1,72 @@
+logger:
+  module: loggers.wandblogger
+  project: vae-ect
+  entity: null
+  results_dir: vae_baseline
+  tags: []
+compile: false
+dev: false
+evaluate: false
+data:
+  module: shapenet
+  data_dir: /home/aromanowski/IPT-Equivariant-VAE/data/ShapeNetCore.v2.PC15k/02691156
+  batch_size: 32
+  num_workers: 8
+  n_points: 2048
+trainer:
+  seed: 1111
+  max_epochs: 1000
+  log_every_n_steps: 1
+  accelerator: auto
+  devices: auto
+  precision: 32-true
+  check_val_every_n_epoch: 10
+  save_top_k: 3
+  checkpoint_interval: 100
+  save_dir: checkpoints
+  plot_every_n_steps: 100
+  plot_dir: plots
+transform:
+  transforms:
+  - module: transforms.rotate
+    axis: 1
+    max_degrees: 5
+  - module: transforms.affine
+    mean_mean:
+    - 0.0
+    - 0.0
+    - 0.0
+    mean_std:
+    - 0.06275183707475662
+    - 0.11978594958782196
+    - 0.45289620757102966
+    scale_mean: 3.407453775405884
+    scale_std: 0.4171832799911499
+    max_scale: 7
+modelconfig:
+  module: models.vae_baseline
+  latent_dim: 128
+  num_pts: 2048
+  learning_rate: 0.0001
+  beta_period: 1560
+  beta_min: 0.001
+  beta_max: 0.01
+  ectlossconfig:
+    num_thetas: 128
+    resolution: 128
+    scale: 8
+    r: 7
+    ect_type: points
+    ambient_dimension: 3
+    normalized: true
+    seed: 2024
+  ectconfig:
+    seed: 2024
+    num_thetas: 128
+    resolution: 128
+    scale: 128
+    r: 7
+    ect_type: points
+    ambient_dimension: 3
+    normalized: true
+experiment: dev
